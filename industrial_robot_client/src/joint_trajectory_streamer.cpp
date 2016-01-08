@@ -74,13 +74,14 @@ void JointTrajectoryStreamer::jointTrajectoryCB(const trajectory_msgs::JointTraj
   if (TransferStates::IDLE != state)
   {
     if (msg->points.empty())
+    {
       ROS_INFO("Empty trajectory received, canceling current trajectory");
+      this->mutex_.lock();
+      trajectoryStop();
+      this->mutex_.unlock();
+    }
     else
-      ROS_ERROR("Trajectory splicing not yet implemented, stopping current motion.");
-
-	this->mutex_.lock();
-    trajectoryStop();
-	this->mutex_.unlock();
+        this->state_ = TransferStates::IDLE;
     return;
   }
 
