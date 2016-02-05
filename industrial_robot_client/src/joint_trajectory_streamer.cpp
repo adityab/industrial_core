@@ -196,7 +196,7 @@ void JointTrajectoryStreamer::streamingThread()
 
         if (send_result)
         {
-          ROS_INFO("Point[%d of %d] sent to controller",
+          ROS_DEBUG("Point[%d of %d] sent to controller",
                    this->current_point_, (int)this->current_traj_.size());
           this->current_point_++;
           if (is_traj_pt) {
