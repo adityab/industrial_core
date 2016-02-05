@@ -266,7 +266,7 @@ bool JointTrajectoryInterface::calc_velocity(const trajectory_msgs::JointTraject
     *rbt_velocity = vel_ratios[max_idx];
   else
   {
-    ROS_WARN_ONCE("Joint velocity-limits unspecified.  Using default velocity-ratio.");
+    ROS_WARN_STREAM_ONCE("Joint velocity-limits unspecified.  Using default velocity-ratio: " << default_vel_ratio_);
     *rbt_velocity = default_vel_ratio_;
   }
 
@@ -281,12 +281,12 @@ bool JointTrajectoryInterface::calc_velocity(const trajectory_msgs::JointTraject
 
 bool JointTrajectoryInterface::calc_duration(const trajectory_msgs::JointTrajectoryPoint& pt, double* rbt_duration)
 {
-  std::vector<double> durations;
   double this_time = pt.time_from_start.toSec();
   static double last_time = 0;
-
-  if (this_time <= last_time)  // earlier time => new trajectory.  Move slowly to first point.
+  if (this_time < last_time)  {
     *rbt_duration = default_duration_;
+    ROS_WARN_STREAM("Earlier time received. Moving slowly to first point.");
+  }
   else
     *rbt_duration = this_time - last_time;
 

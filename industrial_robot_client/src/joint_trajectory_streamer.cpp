@@ -65,24 +65,17 @@ JointTrajectoryStreamer::~JointTrajectoryStreamer()
 
 void JointTrajectoryStreamer::jointTrajectoryCB(const trajectory_msgs::JointTrajectoryConstPtr &msg)
 {
-  ROS_INFO("Receiving joint trajectory message");
+  ROS_INFO_STREAM("Receiving joint trajectory message with " << msg->points.size() << " points");
 
   // read current state value (should be atomic)
   int state = this->state_;
-
-  ROS_DEBUG("Current state is: %d", state);
-  if (TransferStates::IDLE != state)
+  if (TransferStates::IDLE != state && msg->points.empty())
   {
-    if (msg->points.empty())
-    {
       ROS_INFO("Empty trajectory received, canceling current trajectory");
       this->mutex_.lock();
       trajectoryStop();
       this->mutex_.unlock();
-    }
-    else
-        this->state_ = TransferStates::IDLE;
-    return;
+      return;
   }
 
   if (msg->points.empty())
@@ -122,7 +115,6 @@ bool JointTrajectoryStreamer::trajectory_to_msgs(const trajectory_msgs::JointTra
   if (!JointTrajectoryInterface::trajectory_to_msgs(traj, msgs))
     return false;
 
-  // pad trajectory as required for minimum streaming buffer size
   if (!msgs->empty() && (msgs->size() < (size_t)min_buffer_size_))
   {
     ROS_DEBUG("Padding trajectory: current(%d) => minimum(%d)", (int)msgs->size(), min_buffer_size_);
@@ -138,18 +130,22 @@ void JointTrajectoryStreamer::streamingThread()
 {
   JointTrajPtMessage jtpMsg;
   int connectRetryCount = 1;
-
+  double const thread_sleep = 0.005;
+  double const slower_sleep = 0.250;
+  double const connection_sleep = 0.250;
+  bool is_traj_pt = false;
+  bool send_result = false;
   ROS_INFO("Starting joint trajectory streamer thread");
   while (ros::ok())
   {
-    ros::Duration(0.005).sleep();
+    ros::Duration(thread_sleep).sleep();
 
     // automatically re-establish connection, if required
     if (connectRetryCount-- > 0)
     {
       ROS_INFO("Connecting to robot motion server");
       this->connection_->makeConnect();
-      ros::Duration(0.250).sleep();  // wait for connection
+      ros::Duration(connection_sleep).sleep();  // wait for connection
 
       if (this->connection_->isConnected())
         connectRetryCount = 0;
@@ -168,7 +164,7 @@ void JointTrajectoryStreamer::streamingThread()
     switch (this->state_)
     {
       case TransferStates::IDLE:
-        ros::Duration(0.250).sleep();  //  slower loop while waiting for new trajectory
+        ros::Duration(slower_sleep).sleep();  //  slower loop while waiting for new trajectory
         break;
 
       case TransferStates::STREAMING:
@@ -188,17 +184,30 @@ void JointTrajectoryStreamer::streamingThread()
 
         jtpMsg = this->current_traj_[this->current_point_];
         jtpMsg.toRequest(msg);
-            
+
         ROS_DEBUG("Sending joint trajectory point");
-        if (this->connection_->sendAndReceiveMsg(msg, reply, false))
+        is_traj_pt = jtpMsg.getMessageType() == industrial::simple_message::StandardMsgTypes::JOINT_TRAJ_PT;
+        send_result = false;
+
+        if (is_traj_pt)
+            send_result = this->connection_->sendMsg(msg);
+        else
+            send_result = this->connection_->sendAndReceiveMsg(msg, reply, false);
+
+        if (send_result)
         {
           ROS_INFO("Point[%d of %d] sent to controller",
                    this->current_point_, (int)this->current_traj_.size());
           this->current_point_++;
+          if (is_traj_pt) {
+              double wait_time = jtpMsg.point_.getDuration() - thread_sleep;
+              if (wait_time > 0) {
+                ros::Duration(wait_time).sleep();
+              }
+          }
         }
         else
-          ROS_WARN("Failed sent joint point, will try again");
-
+          this->state_ = TransferStates::IDLE;  // no trying again
         break;
       default:
         ROS_ERROR("Joint trajectory streamer: unknown state");
