@@ -133,8 +133,6 @@ void JointTrajectoryStreamer::streamingThread()
   double const thread_sleep = 0.005;
   double const slower_sleep = 0.250;
   double const connection_sleep = 0.250;
-  bool is_traj_pt = false;
-  bool send_result = false;
   ROS_INFO("Starting joint trajectory streamer thread");
   while (ros::ok())
   {
@@ -186,25 +184,14 @@ void JointTrajectoryStreamer::streamingThread()
         jtpMsg.toRequest(msg);
 
         ROS_DEBUG("Sending joint trajectory point");
-        is_traj_pt = jtpMsg.getMessageType() == industrial::simple_message::StandardMsgTypes::JOINT_TRAJ_PT;
-        send_result = false;
-
-        if (is_traj_pt)
-            send_result = this->connection_->sendMsg(msg);
-        else
-            send_result = this->connection_->sendAndReceiveMsg(msg, reply, false);
-
-        if (send_result)
+        if (this->connection_->sendMsg(msg))
         {
           ROS_DEBUG("Point[%d of %d] sent to controller",
                    this->current_point_, (int)this->current_traj_.size());
           this->current_point_++;
-          if (is_traj_pt) {
-              double wait_time = jtpMsg.point_.getDuration() - thread_sleep;
-              if (wait_time > 0) {
-                ros::Duration(wait_time).sleep();
-              }
-          }
+          double wait_time = jtpMsg.point_.getDuration() - thread_sleep;
+          if (wait_time > 0)
+            ros::Duration(wait_time).sleep();
         }
         else
           this->state_ = TransferStates::IDLE;  // no trying again
