@@ -157,7 +157,7 @@ void JointTrajectoryStreamer::streamingThread()
 
     this->mutex_.lock();
 
-    SimpleMessage msg, reply;
+    SimpleMessage msg;
         
     switch (this->state_)
     {
@@ -181,7 +181,7 @@ void JointTrajectoryStreamer::streamingThread()
         }
 
         jtpMsg = this->current_traj_[this->current_point_];
-        jtpMsg.toRequest(msg);
+        jtpMsg.toTopic(msg);
 
         ROS_DEBUG("Sending joint trajectory point");
         if (this->connection_->sendMsg(msg))
